@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Athena</title>
+    <link rel="icon" href="C:\Users\WinWork\Pictures\bolas.jpg" type="image/x-icon">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to right, #2c3e50, #4ca1af);
+            color: rgb(20, 12, 12);
+            text-align: center;
+        }
+        .centralizado {
+            text-align: center;
+        }
+        .player-bar {
+            display: flex;
+            justify-content: space-between;
+            background: #ddd;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            cursor: context-menu;
+        }
+        .player-bar.jogador { background: #b3e5fc; }
+        .player-bar.monstro { background: #ef9a9a; }
+        .player-bar.npc { background: #d1c4e9; }
+        .context-menu {
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            display: none;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+        .context-menu div {
+            padding: 8px;
+            cursor: pointer;
+        }
+        .context-menu div:hover { background: #eee; }
+        .effect-list {
+            font-size: 0.9em;
+            color: #333;
+        }
+        .note-icon {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #2908e4;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .note-modal {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: white;
+            color: black;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        .note-modal textarea {
+            width: 300px;
+            height: 200px;
+        }
+        .note-modal button {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1 class="centralizado">𝓡𝓪𝓼𝓽𝓻𝓮𝓪𝓭𝓸𝓻 𝓭𝓮 𝓘𝓷𝓲𝓬𝓲𝓪𝓽𝓲𝓿𝓪</h1>
+    <button onclick="addPlayer()">Adicionar Jogador</button>
+    <button onclick="rollInitiative()">Rolar Iniciativa🎲</button>
+    <button onclick="clearPlayers()">Limpar Lista🗑️</button>
+    <div id="player-list"></div>
+    <div id="context-menu" class="context-menu"></div>
+
+    <button class="note-icon" onclick="toggleNoteModal()">📝</button>
+    <div class="note-modal" id="noteModal">
+        <textarea id="noteContent" oninput="saveNote()"></textarea>
+    </div>
+
+    <script>
+        let players = [];
+        let selectedPlayer = null;
+        
+        function addPlayer() {
+            const name = prompt("Nome do jogador:");
+            if (name) {
+                players.push({ name, vida: 100, ca: 10, mana: 50, sanidade: 100, iniciativa: 0, tipo: "jogador", efeitos: [] });
+                savePlayers();  // Salva no localStorage
+                renderPlayers();
+            }
+        }
+
+        function rollInitiative() {
+            players.forEach(player => {
+                player.iniciativa = Math.floor(Math.random() * 20);
+            });
+            sortPlayers();
+        }
+
+        function sortPlayers() {
+            players.sort((a, b) => b.iniciativa - a.iniciativa);
+            renderPlayers();
+        }
+
+        function renderPlayers() {
+            const container = document.getElementById("player-list");
+            container.innerHTML = "";
+            players.forEach(player => {
+                const div = document.createElement("div");
+                div.className = `player-bar ${player.tipo}`;
+                div.innerHTML = `
+                    <span>${player.name} | Iniciativa: <input type="number" value="${player.iniciativa}" onchange="updateStat('${player.name}', 'iniciativa', this.value)" /></span>
+                    <span>HP: <input type="number" value="${player.vida}" onchange="updateStat('${player.name}', 'vida', this.value)" /></span>
+                    <span>CA: <input type="number" value="${player.ca}" onchange="updateStat('${player.name}', 'ca', this.value)" /></span>
+                    <span>MP: <input type="number" value="${player.mana}" onchange="updateStat('${player.name}', 'mana', this.value)" /></span>
+                    <span>SP: <input type="number" value="${player.sanidade}" onchange="updateStat('${player.name}', 'sanidade', this.value)" /></span>
+                    <span class="effect-list">Efeitos: ${player.efeitos.join(", ") || "Nenhum"}</span>
+                `;
+                div.oncontextmenu = (event) => showContextMenu(event, player);
+                container.appendChild(div);
+            });
+        }
+
+        function updateStat(name, stat, value) {
+            const player = players.find(p => p.name === name);
+            if (player) {
+                player[stat] = parseInt(value) || 0;
+                savePlayers();  // Salva no localStorage
+                sortPlayers();
+            }
+        }
+
+        function showContextMenu(event, player) {
+            event.preventDefault();
+            selectedPlayer = player;
+            const menu = document.getElementById("context-menu");
+            menu.innerHTML = `
+                <div onclick="changeType('jogador')">Jogador</div>
+                <div onclick="changeType('monstro')">Monstro</div>
+                <div onclick="changeType('npc')">NPC</div>
+                <div onclick="addEffect()">Adicionar Efeito</div>
+                <div onclick="removePlayer()" style="color: red;">Remover</div>
+            `;
+            menu.style.top = `${event.clientY}px`;
+            menu.style.left = `${event.clientX}px`;
+            menu.style.display = "block";
+        }
+
+        function changeType(type) {
+            if (selectedPlayer) {
+                selectedPlayer.tipo = type;
+                sortPlayers();
+                hideContextMenu();
+            }
+        }
+
+        function addEffect() {
+            if (selectedPlayer) {
+                const effect = prompt("Nome do efeito:");
+                if (effect) {
+                    selectedPlayer.efeitos.push(effect);
+                    sortPlayers();
+                }
+                hideContextMenu();
+            }
+        }
+
+        function removePlayer() {
+            if (selectedPlayer) {
+                players = players.filter(p => p !== selectedPlayer);
+                sortPlayers();
+                hideContextMenu();
+            }
+        }
+
+        function hideContextMenu() {
+            document.getElementById("context-menu").style.display = "none";
+        }
+
+        document.body.addEventListener("click", hideContextMenu);
+
+        function clearPlayers() {
+    players = [];
+    localStorage.removeItem("players"); // Remove do localStorage
+    renderPlayers(); // Redesenha a lista após a limpeza
+}
+
+
+        function savePlayers() {
+            localStorage.setItem("players", JSON.stringify(players));
+        }
+
+        function loadPlayers() {
+            const savedPlayers = localStorage.getItem("players");
+            if (savedPlayers) {
+                players = JSON.parse(savedPlayers); // Converte o texto de volta para um array
+                renderPlayers();
+            }
+        }
+
+        function toggleNoteModal() {
+            const noteModal = document.getElementById("noteModal");
+            noteModal.style.display = noteModal.style.display === "block" ? "none" : "block";
+            if (noteModal.style.display === "block") {
+                document.getElementById("noteContent").value = localStorage.getItem("note") || "";
+            }
+        }
+
+        function saveNote() {
+            const noteContent = document.getElementById("noteContent").value;
+            localStorage.setItem("note", noteContent);
+        }
+
+        loadPlayers();
+    </script>
+</body>
+</html>
+<!-- filepath: c:\Users\WinWork\.vscode\index.html -->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARIS</title>
+    <link rel="icon" href="C:\Users\WinWork\Pictures\bolas.jpg" type="image/x-icon">
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .player-bar {
+            display: flex;
+            justify-content: space-between;
+            background: #ddd;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            cursor: context-menu;
+        }
+        .player-bar.jogador { background: #b3e5fc; }
+        .player-bar.monstro { background: #ef9a9a; }
+        .player-bar.npc { background: #d1c4e9; }
+        .context-menu {
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            display: none;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+        .context-menu div {
+            padding: 8px;
+            cursor: pointer;
+        }
+        .context-menu div:hover { background: #eee; }
+        .effect-list {
+            font-size: 0.9em;
+            color: #333;
+        }
+    </style>
+</head><!-- filepath: c:\Users\WinWork\.vscode\index.html -->
